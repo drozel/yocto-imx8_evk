@@ -1,0 +1,3 @@
+#!/bin/bash
+repo init -u https://source.codeaurora.org/external/imx/imx-manifest -b imx-linux-sumo -m imx-4.14.98-2.0.0_demo_mender.xml
+repo sync

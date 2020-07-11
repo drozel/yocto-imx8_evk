@@ -1,0 +1,4 @@
+#!/bin/bash
+
+./sources/poky/bitbake/bin/bitbake core-image-base
+cp build/tmp/deploy/images/imx8mmevk/core-image-base-imx8mmevk*.sdimg ../imx8mm/yocto/images/
