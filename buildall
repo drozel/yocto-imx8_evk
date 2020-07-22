@@ -1,4 +1,16 @@
 #!/bin/bash
 
-./sources/poky/bitbake/bin/bitbake core-image-base
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+export BBPATH=$DIR/build
+
+echo "Started at $(date -u)" >> build.log
+
+#./sources/poky/bitbake/bin/bitbake core-image-base
+./sources/poky/bitbake/bin/bitbake fsl-image-qt5-validation-imx
+if [ $? -ne 0 ]; then
+	echo "Failed at $(date -u)" >> build.log
+	exit 1
+fi
+
 cp build/tmp/deploy/images/imx8mmevk/core-image-base-imx8mmevk*.sdimg ../imx8mm/yocto/images/
+echo "Finished at $(date -u)" >> build.log

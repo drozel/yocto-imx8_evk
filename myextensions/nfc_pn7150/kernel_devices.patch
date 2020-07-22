@@ -1,0 +1,25 @@
+--- build/tmp/work-shared/imx8mmevk/kernel-source/arch/arm64/boot/dts/freescale/fsl-imx8mm-evk.dts.orig	2020-07-22 17:35:15.831528016 +0200
++++ build/tmp/work-shared/imx8mmevk/kernel-source/arch/arm64/boot/dts/freescale/fsl-imx8mm-evk.dts	2020-07-22 17:38:13.671528016 +0200
+@@ -226,6 +226,8 @@
+ 			fsl,pins = <
+ 				MX8MM_IOMUXC_I2C1_SCL_I2C1_SCL			0x400001c3
+ 				MX8MM_IOMUXC_I2C1_SDA_I2C1_SDA			0x400001c3
++                                MX8MM_IOMUXC_ECSPI2_MOSI_GPIO5_IO11             0x41
++                                MX8MM_IOMUXC_ECSPI2_MISO_GPIO5_IO12             0x41
+ 			>;
+ 		};
+ 
+@@ -760,6 +762,13 @@
+ 	pinctrl-0 = <&pinctrl_i2c3>;
+ 	status = "okay";
+ 
++        pn54x: pn54x@28 {
++                compatible ="nxp,pn547";
++                reg = <0x28>;
++                interrupt-gpios = <&gpio5 11 0>;
++                enable-gpios = <&gpio5 12 0>;
++        };
++
+ 	pca6416: gpio@20 {
+ 		compatible = "ti,tca6416";
+ 		reg = <0x20>;

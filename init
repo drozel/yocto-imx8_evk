@@ -1,3 +1,15 @@
 #!/bin/bash
+
+# get yocto
 repo init -u https://source.codeaurora.org/external/imx/imx-manifest -b imx-linux-sumo -m imx-4.14.98-2.0.0_demo_mender.xml
 repo sync
+DISTRO=fsl-imx-xwayland MACHINE=imx8mmevk . fsl-setup-mender.sh -b build
+
+# configure NFC
+git clone https://github.com/NXPNFCLinux/meta-nxp-nfc.git sources/meta-nxp-nfc
+patch build/tmp/work-shared/imx8mmevk/kernel-source/arch/arm64/boot/dts/freescale/fsl-imx8mm-evk.dts myextensions/nfc_pn7150/kernel_devices.patch
+echo 'BBLAYERS += " ${BSPDIR}/sources/meta-nxp-nfc"' >> build/conf/bblayers.conf
+echo 'IMAGE_INSTALL_append = " kernel-module-nxp-pn5xx nxp-nfc-bin "' >> build/conf/local.conf
+
+# apply kernel config
+ln -sf myextensions/.config ./build/tmp/work/imx8mmevk-poky-linux/linux-imx/4.14.98-r0/build/.config
