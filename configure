@@ -1,4 +1,0 @@
-#!/bin/bash
-
-cd build
-../sources/poky/bitbake/bin/bitbake -c menuconfig virtual/kernel

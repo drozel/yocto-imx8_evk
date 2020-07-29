@@ -1,0 +1,119 @@
+#/bin/bash
+
+IMAGE=fsl-image-qt5-validation-imx #we build version with QT here, but could be changed
+
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+
+export BBPATH=$DIR/build
+
+function init {
+	mkdir runfolder
+	cd runfolder
+
+	# get yocto
+	repo init -u https://source.codeaurora.org/external/imx/imx-manifest -b imx-linux-sumo -m imx-4.14.98-2.0.0_demo_mender.xml
+	repo sync
+	DISTRO=fsl-imx-xwayland MACHINE=imx8mmevk . fsl-setup-mender.sh -b build
+	cd ..
+
+	# configure NFC
+	git clone https://github.com/NXPNFCLinux/meta-nxp-nfc.git sources/meta-nxp-nfc
+	echo 'BBLAYERS += " ${BSPDIR}/sources/meta-nxp-nfc"' >> build/conf/bblayers.conf
+	echo 'IMAGE_INSTALL_append = " kernel-module-nxp-pn5xx nxp-nfc-bin "' >> build/conf/local.conf
+
+	# other changes
+	sed -E  "s/^.*MENDER_STORAGE_TOTAL_SIZE_MB.*/MENDER_STORAGE_TOTAL_SIZE_MB = 16384/" build/conf/local.conf # increase maximum image size
+	echo 'EXTRA_IMAGE_FEATURES = "debug-tweaks tools-debug tools-testapps"' >> build/conf/local.conf         # enable additional utils etc
+
+	# some system requirements:
+	sudo apt install screen libncurses5-dev 	
+
+	mkdir deploy
+}
+
+function doDeployImages {
+	mv $DIR/build/tmp/deploy/images/imx8mmevk/*.sdimg deploy 
+}
+
+function buildall {
+	# i don't use how to patch kernel devices and configs before the first build. Those files don't exist at all
+	
+	cd $DIR/runfolder/build
+	bitbake $IMAGE # so, I build at the first time (nfc extension and kernel configs are not here yet) and it creates files we are going to fix 
+	
+	# now patch files in tmp directory:
+	patch tmp/work-shared/imx8mmevk/kernel-source/arch/arm64/boot/dts/freescale/fsl-imx8mm-evk.dts $DIR/myextensions/nfc_pn7150/kernel_devices.patch # add PN7150 NFC module
+	cp $DIR/myextensions/.config tmp/work/imx8mmevk-poky-linux/linux-imx/4.14.98-r0/build # replace kernel config with our one  
+
+	# now rebuild the kernel
+	bitbake -f -c compile linux-imx && bitbake -f -c deploy linux-imx
+	bitbake $IMAGE
+
+	doDeployImages
+}
+
+function rebuild {
+ 	cd $DIR/runfolder/build	
+	bitbake $IMAGE
+	doDeployImages
+}
+
+function configure {
+	cd $DIR/runfolder/build
+	bitbake -c menuconfig virtual/kernel
+	
+	cd $DIR
+	cp ./runfolder/build/tmp/work/imx8mmevk-poky-linux/linux-imx/4.14.98-r0/build myextensions/.config
+
+	CONF_CHANGED=$(git status | fgrep myextensions/.config)
+	if [[ ! -z "$CONF_CHANGED" ]
+	then
+	 echo "Your .config from repo was changed. Commit it to persist changes!"
+	fi
+}
+
+function createsdk {
+	cd $DIR/runfolder/build
+	bitbake -c populate_sdk $IMAGE
+	$DIR/build/tmp/deploy/sdk/*.sh deploy
+}
+
+# -------------------     start    ------------------ #
+
+# check PATH (if rebooted after ./init)
+if [[ "${PATH}" != *"sources/poky/scripts"* ]]; then
+        P_SCRIPTS=$DIR/sources/poky/scripts
+        echo "adding \"$P_SCRIPTS\" to PATH..."
+        export PATH=$P_SCRIPTS:$PATH
+fi
+
+if [[ "{$PATH}" != *"sources/poky/bitbake/bin"* ]]; then
+        P_BITBAKE=$DIR/sources/poky/bitbake/bin
+        echo "adding \"$P_BITBAKE\" to PATH..."
+        export PATH=$P_BITBAKE:$PATH
+fi
+echo "current \$PATH is: \"$PATH\""
+
+# process certain step
+echo "Started '$1' at $(date -u)" >> build.log
+
+case "$1" in
+  "init")
+    init 
+    ;;
+  "rebuild")
+    rebuild 
+    ;;
+  "buildall")
+    buildall 
+    ;;
+  "configure")
+    configure 
+    ;;
+  *)
+    echo "Usage: $0 [init|buildall|rebuild]
+    exit 1
+    ;;
+esac
+
+echo "Finished at $(date -u)" >> build.log
