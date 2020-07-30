@@ -1,13 +1,34 @@
 #/bin/bash
 
+set -e
+
 IMAGE=fsl-image-qt5-validation-imx #we build version with QT here, but could be changed
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 
 export BBPATH=$DIR/build
 
+RED='\033[0;31m'
+NC='\033[0m' # No Color
+
+function cecho {
+	echo "$1$2$NC" 
+}
+
 function init {
-	mkdir runfolder
+	if [ -d "runfolder" ] 
+	then
+		cecho $RED "Build directory exists. It you had build there, all results will be lost and the build can take a long time" 
+		read -p "Do you want to remove it?" -n 1 -r
+		if [[ $REPLY =~ ^[Yy]$ ]]
+		then
+			rm -rf runfolder
+		else
+			return 
+		fi
+	fi	
+
+	mkdir runfolder 
 	cd runfolder
 
 	# get yocto
@@ -22,8 +43,8 @@ function init {
 	echo 'IMAGE_INSTALL_append = " kernel-module-nxp-pn5xx nxp-nfc-bin "' >> build/conf/local.conf
 
 	# other changes
-	sed -E  "s/^.*MENDER_STORAGE_TOTAL_SIZE_MB.*/MENDER_STORAGE_TOTAL_SIZE_MB = 16384/" build/conf/local.conf # increase maximum image size
-	echo 'EXTRA_IMAGE_FEATURES = "debug-tweaks tools-debug tools-testapps"' >> build/conf/local.conf         # enable additional utils etc
+	sed -E -i "s/^.*MENDER_STORAGE_TOTAL_SIZE_MB.*/MENDER_STORAGE_TOTAL_SIZE_MB = \"16384\"/" $DIR/runfolder/build/conf/local.conf # increase maximum image size
+	echo 'EXTRA_IMAGE_FEATURES = "debug-tweaks tools-debug tools-testapps"' >> $DIR/runfolder/build/conf/local.conf          # enable additional utils etc
 
 	# some system requirements:
 	sudo apt install screen libncurses5-dev 	
@@ -32,7 +53,7 @@ function init {
 }
 
 function doDeployImages {
-	mv $DIR/build/tmp/deploy/images/imx8mmevk/*.sdimg deploy 
+	mv $DIR/runfolder/build/tmp/deploy/images/imx8mmevk/*.sdimg deploy 
 }
 
 function buildall {
@@ -42,7 +63,15 @@ function buildall {
 	bitbake $IMAGE # so, I build at the first time (nfc extension and kernel configs are not here yet) and it creates files we are going to fix 
 	
 	# now patch files in tmp directory:
-	patch tmp/work-shared/imx8mmevk/kernel-source/arch/arm64/boot/dts/freescale/fsl-imx8mm-evk.dts $DIR/myextensions/nfc_pn7150/kernel_devices.patch # add PN7150 NFC module
+	FLAG_FILE="pn7150_patched"
+	if [ -d "$FLAG_FILE" ]
+        then
+		echo "kernel seems to be already pathed, skip this step"
+	else
+		patch tmp/work-shared/imx8mmevk/kernel-source/arch/arm64/boot/dts/freescale/fsl-imx8mm-evk.dts $DIR/myextensions/nfc_pn7150/kernel_devices.patch # add PN7150 NFC module
+		touch $FLAG_FILE
+	fi
+
 	cp $DIR/myextensions/.config tmp/work/imx8mmevk-poky-linux/linux-imx/4.14.98-r0/build # replace kernel config with our one  
 
 	# now rebuild the kernel
@@ -63,10 +92,10 @@ function configure {
 	bitbake -c menuconfig virtual/kernel
 	
 	cd $DIR
-	cp ./runfolder/build/tmp/work/imx8mmevk-poky-linux/linux-imx/4.14.98-r0/build myextensions/.config
+	cp ./runfolder/build/tmp/work/imx8mmevk-poky-linux/linux-imx/4.14.98-r0/build/.config myextensions/
 
 	CONF_CHANGED=$(git status | fgrep myextensions/.config)
-	if [[ ! -z "$CONF_CHANGED" ]
+	if [[ ! -z "$CONF_CHANGED" ]]
 	then
 	 echo "Your .config from repo was changed. Commit it to persist changes!"
 	fi
@@ -80,15 +109,17 @@ function createsdk {
 
 # -------------------     start    ------------------ #
 
+cd $DIR
+
 # check PATH (if rebooted after ./init)
 if [[ "${PATH}" != *"sources/poky/scripts"* ]]; then
-        P_SCRIPTS=$DIR/sources/poky/scripts
+        P_SCRIPTS=$DIR/runfolder/sources/poky/scripts
         echo "adding \"$P_SCRIPTS\" to PATH..."
         export PATH=$P_SCRIPTS:$PATH
 fi
 
 if [[ "{$PATH}" != *"sources/poky/bitbake/bin"* ]]; then
-        P_BITBAKE=$DIR/sources/poky/bitbake/bin
+        P_BITBAKE=$DIR/runfolder/sources/poky/bitbake/bin
         echo "adding \"$P_BITBAKE\" to PATH..."
         export PATH=$P_BITBAKE:$PATH
 fi
@@ -111,7 +142,7 @@ case "$1" in
     configure 
     ;;
   *)
-    echo "Usage: $0 [init|buildall|rebuild]
+    echo "Usage: $0 [init|buildall|rebuild]"
     exit 1
     ;;
 esac
