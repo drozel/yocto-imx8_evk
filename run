@@ -1,7 +1,7 @@
 #/bin/bash
 
 set -e
-
+set -x
 IMAGE=fsl-image-qt5-validation-imx #we build version with QT here, but could be changed
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
@@ -16,7 +16,7 @@ function cecho {
 }
 
 function init {
-	if [ -d "runfolder" ] 
+	if [ -f "runfolder" ] 
 	then
 		cecho $RED "Build directory exists. It you had build there, all results will be lost and the build can take a long time" 
 		read -p "Do you want to remove it?" -n 1 -r
@@ -40,20 +40,26 @@ function init {
 	# configure NFC
 	git clone https://github.com/NXPNFCLinux/meta-nxp-nfc.git sources/meta-nxp-nfc
 	echo 'BBLAYERS += " ${BSPDIR}/sources/meta-nxp-nfc"' >> build/conf/bblayers.conf
-	echo 'IMAGE_INSTALL_append = " kernel-module-nxp-pn5xx nxp-nfc-bin "' >> build/conf/local.conf
+	echo 'IMAGE_INSTALL_append += " kernel-module-nxp-pn5xx nxp-nfc-bin"' >> build/conf/local.conf
 
 	# other changes
 	sed -E -i "s/^.*MENDER_STORAGE_TOTAL_SIZE_MB.*/MENDER_STORAGE_TOTAL_SIZE_MB = \"16384\"/" $DIR/runfolder/build/conf/local.conf # increase maximum image size
 	echo 'EXTRA_IMAGE_FEATURES = "debug-tweaks tools-debug tools-testapps"' >> $DIR/runfolder/build/conf/local.conf          # enable additional utils etc
+	echo "IMAGE_INSTALL_append += \"hostapd\"" >> $DIR/runfolder/build/conf/local.conf
+	
+	# add AP layer
+	cd $DIR/runfolder/build
+	#bitbake-layers add-layer ../../wlan_accesspoint
 
 	# some system requirements:
 	sudo apt install screen libncurses5-dev 	
-
-	mkdir deploy
+	
+	cd $DIR
+	mkdir deploy || true
 }
 
 function doDeployImages {
-	mv $DIR/runfolder/build/tmp/deploy/images/imx8mmevk/*.sdimg deploy 
+	mv $DIR/runfolder/build/tmp/deploy/images/imx8mmevk/*.sdimg $DIR/deploy 
 }
 
 function buildall {
@@ -64,7 +70,7 @@ function buildall {
 	
 	# now patch files in tmp directory:
 	FLAG_FILE="pn7150_patched"
-	if [ -d "$FLAG_FILE" ]
+	if [ -f "$FLAG_FILE" ]
         then
 		echo "kernel seems to be already pathed, skip this step"
 	else
@@ -111,18 +117,7 @@ function createsdk {
 
 cd $DIR
 
-# check PATH (if rebooted after ./init)
-if [[ "${PATH}" != *"sources/poky/scripts"* ]]; then
-        P_SCRIPTS=$DIR/runfolder/sources/poky/scripts
-        echo "adding \"$P_SCRIPTS\" to PATH..."
-        export PATH=$P_SCRIPTS:$PATH
-fi
-
-if [[ "{$PATH}" != *"sources/poky/bitbake/bin"* ]]; then
-        P_BITBAKE=$DIR/runfolder/sources/poky/bitbake/bin
-        echo "adding \"$P_BITBAKE\" to PATH..."
-        export PATH=$P_BITBAKE:$PATH
-fi
+source runfolder/sources/poky/oe-init-build-env || true # may not exist if the first time
 echo "current \$PATH is: \"$PATH\""
 
 # process certain step
