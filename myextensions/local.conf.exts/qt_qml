@@ -1,0 +1,6 @@
+IMAGE_INSTALL_append += " qtmultimedia qtquickcontrols2 qtdeclarative qtdeclarative-qmlplugins qtquickcontrols2-qmlplugins qtmultimedia-qmlplugins"
+
+IMAGE_INSTALL_append += "pulseaudio libpulse-mainloop-glib"
+PACKAGECONFIG_append_pn-qtbase = " sql-sqlite gstreamer gst-plugins-base xcb accessibility pulseaudio gtkstyle "
+PACKAGECONFIG_append_pn-qtquickcontrols = " accessibility"
+PACKAGECONFIG_append_pn-qtmultimedia = " gstreamer"

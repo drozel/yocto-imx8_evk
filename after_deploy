@@ -1,0 +1,1 @@
+mv deploy/* ../imx8mm/yocto/images/
