@@ -1,8 +1,8 @@
 #/bin/bash
 
 set -e
-set -x
-IMAGE=fsl-image-qt5-validation-imx #we build version with QT here, but could be changed
+
+IMAGE="fsl-image-qt5-validation-imx" #we build version with QT here, but could be changed
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 
@@ -15,8 +15,14 @@ function cecho {
 	echo "$1$2$NC" 
 }
 
+function clean {
+	cd $DIR/runfolder/build
+	bitbake -c clean $IMAGE
+}
+
+
 function init {
-	if [ -f "runfolder" ] 
+	if [ -d "runfolder" ] 
 	then
 		cecho $RED "Build directory exists. It you had build there, all results will be lost and the build can take a long time" 
 		read -p "Do you want to remove it?" -n 1 -r
@@ -40,26 +46,32 @@ function init {
 	# configure NFC
 	git clone https://github.com/NXPNFCLinux/meta-nxp-nfc.git sources/meta-nxp-nfc
 	echo 'BBLAYERS += " ${BSPDIR}/sources/meta-nxp-nfc"' >> build/conf/bblayers.conf
-	echo 'IMAGE_INSTALL_append += " kernel-module-nxp-pn5xx nxp-nfc-bin"' >> build/conf/local.conf
 
 	# other changes
 	sed -E -i "s/^.*MENDER_STORAGE_TOTAL_SIZE_MB.*/MENDER_STORAGE_TOTAL_SIZE_MB = \"16384\"/" $DIR/runfolder/build/conf/local.conf # increase maximum image size
-	echo 'EXTRA_IMAGE_FEATURES = "debug-tweaks tools-debug tools-testapps"' >> $DIR/runfolder/build/conf/local.conf          # enable additional utils etc
-	echo "IMAGE_INSTALL_append += \"hostapd\"" >> $DIR/runfolder/build/conf/local.conf
 	
 	# add AP layer
 	cd $DIR/runfolder/build
-	#bitbake-layers add-layer ../../wlan_accesspoint
+	bitbake-layers add-layer ../../wlan_accesspoint
 
 	# some system requirements:
 	sudo apt install screen libncurses5-dev 	
+
+	# apply local.conf changes
+	cat $DIR/myextensions/local.conf.exts/* >> $DIR/runfloder/buid/conf/local.conf
 	
 	cd $DIR
 	mkdir deploy || true
 }
 
 function doDeployImages {
+	cd $DIR
 	mv $DIR/runfolder/build/tmp/deploy/images/imx8mmevk/*.sdimg $DIR/deploy 
+
+	if [ -f "after_deploy" ]
+        then
+		source after_deploy
+        fi
 }
 
 function buildall {
@@ -117,7 +129,12 @@ function createsdk {
 
 cd $DIR
 
-source runfolder/sources/poky/oe-init-build-env || true # may not exist if the first time
+if [ -f "runfolder/sources/poky/oe-init-build-env" ]
+then
+	cd $DIR/runfolder
+	source sources/poky/oe-init-build-env build
+	cd $DIR
+fi
 echo "current \$PATH is: \"$PATH\""
 
 # process certain step
@@ -136,8 +153,11 @@ case "$1" in
   "configure")
     configure 
     ;;
+  "clean")
+    clean
+    ;;
   *)
-    echo "Usage: $0 [init|buildall|rebuild]"
+    echo "Usage: $0 [init|buildall|rebuild|clean]"
     exit 1
     ;;
 esac
